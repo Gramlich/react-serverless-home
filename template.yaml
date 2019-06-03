@@ -35,9 +35,11 @@ Resources:
     Properties:
       BucketName: !Sub ${AWS::StackName}-objectsto-${AWS::AccountId}
       AccessControl: PublicRead
-      WebsiteConfigration: 
+      WebsiteConfigration:
         IndexDocument: index.html
         ErrorDocument: index.html
+      WebsiteConfiguration:
+        IndexDocument: index.html
     Metadata:
       StackeryName: React App Host
 Parameters:
