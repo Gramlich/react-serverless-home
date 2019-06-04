@@ -1,14 +1,36 @@
 AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Resources:
-  Function:
+  restApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${StackTagName} Environment ${EnvironmentTagName}
+        - ResourceName: restApi
+      StageName: !Ref EnvironmentAPIGatewayStageName
+      DefinitionBody:
+        swagger: '2.0'
+        info: {}
+        paths:
+          /:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${getEvent.Arn}/invocations
+              responses: {}
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+    Metadata:
+      StackeryName: restApi
+  getEvent:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${AWS::StackName}-Function
+      FunctionName: !Sub ${AWS::StackName}-getEvent
       Description: !Sub
         - Stack ${StackTagName} Environment ${EnvironmentTagName} Function ${ResourceName}
-        - ResourceName: deployFrontEnd
-      CodeUri: src/deployFrontEnd
+        - ResourceName: getEvent
+      CodeUri: src/getEvent
       Handler: index.handler
       Runtime: nodejs10.x
       MemorySize: 3008
@@ -16,26 +38,28 @@ Resources:
       Tracing: Active
       Policies:
         - AWSXrayWriteOnlyAccess
-        - S3CrudPolicy:
-            BucketName: !Ref ObjectStore
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt queuedJobs.QueueName
+      Events:
+        restApiGET:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+            RestApiId: !Ref restApi
       Environment:
         Variables:
-          BUCKET_NAME: !Ref ObjectStore
-          BUCKET_ARN: !GetAtt ObjectStore.Arn
-          XDG_CONFIG_HOME: /tmp/.config
+          QUEUE_NAME: !GetAtt queuedJobs.QueueName
+          QUEUE_ARN: !GetAtt queuedJobs.Arn
+          QUEUE_URL: !Ref queuedJobs
     Metadata:
-      StackeryName: deployFrontEnd
-  FunctionDeployTrigger:
-    Type: Custom::FunctionDeployTrigger
+      StackeryName: getEvent
+  queuedJobs:
+    Type: AWS::SQS::Queue
     Properties:
-      ServiceToken: !GetAtt Function.Arn
-      DeploymentTimestamp: !Ref DeploymentTimestamp
-  ObjectStore:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub ${AWS::StackName}-objectsto-${AWS::AccountId}
+      QueueName: !Sub ${AWS::StackName}-queuedJobs
     Metadata:
-      StackeryName: React App Host
+      StackeryName: queuedJobs
 Parameters:
   StackTagName:
     Type: String
@@ -43,6 +67,6 @@ Parameters:
   EnvironmentTagName:
     Type: String
     Description: Environment Name (injected by Stackery at deployment time)
-  DeploymentTimestamp:
-    Type: Number
-    Description: Deployment preparation timestamp in milliseconds Since Epoch (injected by Stackery at deployment time)
+  EnvironmentAPIGatewayStageName:
+    Type: String
+    Description: Environment name used for API Gateway Stage names (injected by Stackery at deployment time)
